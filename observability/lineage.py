@@ -1,3 +1,10 @@
+"""Lineage graph traversal utilities.
+
+Supports:
+- Dataset-level BFS downstream traversal
+- Column-level transitive BFS downstream traversal
+- dbt manifest graph extraction
+"""
 from __future__ import annotations
 
 import json
@@ -30,17 +37,41 @@ def get_downstream_assets(graph: dict[str, list[str]], start: str) -> list[str]:
 def get_column_downstream(
     column_graph: dict[str, list[str]], start_column: str
 ) -> list[str]:
-    """TODO(student): implement column-level traversal.
+    """Return transitive downstream columns in BFS order, excluding start.
 
-    Starter returns only direct children, so transitive hidden cases will fail.
+    The column graph maps column identifiers (e.g. 'raw_orders.amount') to
+    the columns that directly depend on them. This function traverses the
+    graph transitively so that indirect dependencies are also discovered.
+
+    Parameters
+    ----------
+    column_graph : dict[str, list[str]]
+        Mapping of source column -> [dependent columns].
+    start_column : str
+        The starting column identifier.
+
+    Returns
+    -------
+    list[str]
+        All transitive downstream column identifiers in BFS order.
     """
-    return list(column_graph.get(start_column, []))
+    seen = {start_column}
+    q: deque[str] = deque([start_column])
+    out: list[str] = []
+    while q:
+        node = q.popleft()
+        for child in column_graph.get(node, []):
+            if child not in seen:
+                seen.add(child)
+                out.append(child)
+                q.append(child)
+    return out
 
 
 def extract_dbt_dataset_graph(manifest_path: str | Path) -> dict[str, list[str]]:
     """Minimal dbt manifest parser.
 
-    It maps each dbt node unique_id to the nodes that depend on it. Students may
+    Maps each dbt node unique_id to the nodes that depend on it. Students may
     enrich names, exposures, owners, columns, or OpenLineage facets.
     """
     path = Path(manifest_path)

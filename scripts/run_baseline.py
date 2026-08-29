@@ -19,6 +19,31 @@ from src.contract_validator import failed_issues, load_contract, validate_datafr
 from src.io_utils import load_jsonl
 
 
+def check_kb_freshness(docs: list[dict]) -> dict:
+    """Check if any KB document has stale publish timestamps (>1 hour old)."""
+    if not docs:
+        return {"passed": True, "stale_docs": 0, "details": "no_docs"}
+
+    now = pd.Timestamp(datetime.now(timezone.utc))
+    stale_count = 0
+    max_age_minutes = 0.0
+    for doc in docs:
+        published = pd.to_datetime(doc.get("published_at", ""), utc=True, errors="coerce")
+        if pd.isna(published):
+            continue
+        age_minutes = (now - published).total_seconds() / 60.0
+        max_age_minutes = max(max_age_minutes, age_minutes)
+        if age_minutes > 60:  # more than 1 hour old
+            stale_count += 1
+
+    return {
+        "passed": stale_count == 0,
+        "stale_docs": stale_count,
+        "max_age_minutes": round(max_age_minutes, 1),
+        "details": f"stale_docs={stale_count}, max_age_minutes={max_age_minutes:.1f}",
+    }
+
+
 def main() -> None:
     orders = pd.read_csv(ROOT / "data" / "incoming" / "orders.csv")
     history = pd.read_csv(ROOT / "data" / "history" / "metrics_history.csv")
@@ -50,6 +75,9 @@ def main() -> None:
         [d["content"] for d in docs], history["mean_text_length"].tail(14).tolist()
     )
 
+    # KB freshness check (detects stale_kb fault)
+    kb_freshness = check_kb_freshness(docs)
+
     # Demo SLO: one check event for this run.
     bad = 1 if critical_failed else 0
     contract_slo = calculate_slo(0.999, bad_events=bad, total_events=1)
@@ -66,6 +94,7 @@ def main() -> None:
         "row_count_anomaly": row_result,
         "freshness_minutes": freshness_minutes,
         "kb_text_length_signal": text_result,
+        "kb_freshness": kb_freshness,
         "contract_slo": contract_slo,
         "sample_blast_radius_from_stg_orders": blast_radius,
     }
@@ -79,6 +108,7 @@ def main() -> None:
     print(f"row-count anomaly        : {row_result['is_anomaly']} ({row_result['method']}, score={row_result['score']:.2f})")
     print(f"freshness minutes        : {freshness_minutes:.1f}")
     print(f"KB length anomaly        : {text_result['is_anomaly']}")
+    print(f"KB freshness stale docs  : {kb_freshness['stale_docs']}")
     print(f"sample blast radius      : {', '.join(blast_radius)}")
     print(f"report                    : {out.relative_to(ROOT)}")
 

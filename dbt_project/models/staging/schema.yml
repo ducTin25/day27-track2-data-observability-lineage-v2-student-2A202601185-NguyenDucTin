@@ -11,6 +11,9 @@ models:
       - name: customer_id
         data_tests:
           - not_null
+      - name: amount_usd
+        data_tests:
+          - not_null
       - name: currency
         data_tests:
           - accepted_values:
@@ -23,7 +26,16 @@ models:
                 values: ['pending', 'completed', 'refunded', 'cancelled']
 
   - name: stg_customers
+    description: Cleaned customer records with SCD tracking.
     columns:
       - name: customer_id
         data_tests:
           - not_null
+      - name: country
+        data_tests:
+          - not_null
+      - name: tier
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['basic', 'silver', 'gold']
